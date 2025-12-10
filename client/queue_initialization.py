@@ -1,14 +1,17 @@
 from rq import Queue
-from redis import Redis
 from dotenv import load_dotenv
 import os
+from upstash_redis import Redis
 
 load_dotenv()
 
-REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = int(os.getenv("REDIS_PORT"))
+UPSTASH_REDIS_URL = os.getenv("UPSTASH_REDIS_REST_URL")
+UPSTASH_REDIS_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN")
 
-queue = Queue(connection=Redis(
-    host=REDIS_HOST,
-    port=REDIS_PORT,
-))
+
+redis_client= Redis(
+    url=UPSTASH_REDIS_URL,
+    token=UPSTASH_REDIS_TOKEN
+)
+
+queue = Queue(connection=redis_client)
