@@ -5,3 +5,4 @@ Dockerfile
 .dockerignore
 nodejs.pdf
 ragpdf111.code-workspace
+DELPOYMENT.md
