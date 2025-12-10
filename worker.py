@@ -1,10 +1,3 @@
-"""
-Background worker for processing heavy CPU-bound tasks (PDF ingestion).
-Run this separately from your FastAPI server.
-
-Usage:
-    python worker.py
-"""
 import os
 from dotenv import load_dotenv
 from rq import Worker
