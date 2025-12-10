@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.env
+Dockerfile
+.dockerignore
+nodejs.pdf
+ragpdf111.code-workspace
