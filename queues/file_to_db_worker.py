@@ -12,7 +12,7 @@ load_dotenv()
 def file_embedding_and_loading(file_path, collection_name="ragpdf"):
     
     loader = PyMuPDFLoader(file_path=file_path)
-    docs = loader.load(loader)
+    docs = loader.load()
 
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
