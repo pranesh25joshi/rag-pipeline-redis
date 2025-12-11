@@ -3,15 +3,31 @@ from langchain_google_genai.embeddings import GoogleGenerativeAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
+import tempfile
 from langchain_community.document_loaders import PyMuPDFLoader
 
 
 load_dotenv()
 
 
-def file_embedding_and_loading(file_path, collection_name="ragpdf"):
+def file_embedding_and_loading(file_content, filename, collection_name="ragpdf"):
+    """
+    Process uploaded file content and store embeddings in Qdrant.
+    
+    Args:
+        file_content: Binary content of the uploaded file
+        filename: Original filename
+        collection_name: Qdrant collection name
+    """
+    temp_file_path = None
     try:
-        loader = PyMuPDFLoader(file_path=file_path)
+        # Save file content to a temporary file on the worker
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_file:
+            temp_file.write(file_content)
+            temp_file_path = temp_file.name
+        
+        # Load and process the PDF
+        loader = PyMuPDFLoader(file_path=temp_file_path)
         docs = loader.load()
 
         text_splitter = RecursiveCharacterTextSplitter(
@@ -20,7 +36,7 @@ def file_embedding_and_loading(file_path, collection_name="ragpdf"):
         )
         chunk = text_splitter.split_documents(docs)
 
-        embedding_model= GoogleGenerativeAIEmbeddings(
+        embedding_model = GoogleGenerativeAIEmbeddings(
             model="models/gemini-embedding-001"
         )
 
@@ -35,14 +51,13 @@ def file_embedding_and_loading(file_path, collection_name="ragpdf"):
             collection_name=collection_name
         )
 
-        print(f"Processed and stored {len(chunk)} chunks from {file_path} in Qdrant.")
+        print(f"Processed and stored {len(chunk)} chunks from {filename} in Qdrant collection '{collection_name}'.")
 
-        os.remove(file_path)
-
-        return "File processed and indexed successfully."
+        return f"File '{filename}' processed and indexed successfully. {len(chunk)} chunks stored."
     except Exception as e:
-        print(f"Error processing file {file_path}: {e}")
+        print(f"Error processing file {filename}: {e}")
         return f"Error processing file: {e}"
     finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # Clean up temporary file
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)

@@ -48,7 +48,6 @@ async def chat(
         )
         context = "\n\n".join([r.page_content for r in search_result])
         
-        # Stream response from Gemini
         client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
         
         def generate_stream():
@@ -84,12 +83,11 @@ async def get_result(
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
-    os.makedirs("/tmp", exist_ok=True)
-    file_location = f"/tmp/{file.filename}"
+    # Read file content
+    file_content = await file.read()
+    filename = file.filename
     
-    with open(file_location, "wb") as f:
-        f.write(await file.read())
-
-    job = queue.enqueue(file_embedding_and_loading, file_location)
+    # Enqueue job with file content and filename
+    job = queue.enqueue(file_embedding_and_loading, file_content, filename)
 
     return {"status": "queued", "job_id": job.id}
