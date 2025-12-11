@@ -8,10 +8,21 @@ import os
 from langchain_google_genai.embeddings import GoogleGenerativeAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from google import genai
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
 app = FastAPI()
+
+app.middleware(
+    CORSMiddleware,
+    allow_origins=[
+        os.getenv("FRONTEND_URL", "http://localhost:5173")
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def home():
