@@ -52,7 +52,7 @@ async def chat(
         
         def generate_stream():
             response = client.models.generate_content_stream(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.5-flash",
                 contents=f"Context: {context}\n\nQuery: {query}\n\nProvide a detailed answer based on the context."
             )
             for chunk in response:
