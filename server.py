@@ -1,12 +1,14 @@
-from fastapi import FastAPI, Query, HTTPException, UploadFile, File
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
-from queues.file_to_db_worker import file_embedding_and_loading
-from client.queue_initialization import queue
 import os
+import uuid
+import tempfile
 from langchain_google_genai.embeddings import GoogleGenerativeAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyMuPDFLoader
 from google import genai
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,12 +19,65 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://ragvector.vercel.app", 
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://ragvector.vercel.app",
+        "https://*.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# In-memory job store to replace Redis queue
+jobs = {}
+
+def process_file_background(job_id: str, file_content: bytes, filename: str, collection_name: str = "ragpdf"):
+    """
+    Process uploaded file content and store embeddings in Qdrant directly via a background task.
+    """
+    temp_file_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_file:
+            temp_file.write(file_content)
+            temp_file_path = temp_file.name
+        
+        loader = PyMuPDFLoader(file_path=temp_file_path)
+        docs = loader.load()
+
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=400
+        )
+        chunk = text_splitter.split_documents(docs)
+
+        embedding_model = GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001"
+        )
+
+        vector_db = QdrantVectorStore.from_documents(
+            documents=chunk,
+            embedding=embedding_model,
+            url=os.getenv("QDRANT_URL"),
+            api_key=os.getenv("QDRANT_API"),
+            collection_name=collection_name
+        )
+
+        print(f"Processed and stored {len(chunk)} chunks from {filename}")
+        jobs[job_id] = {
+            "status": "finished", 
+            "result": {"message": f"Processed successfully.", "collection_name": collection_name}
+        }
+        
+    except Exception as e:
+        print(f"Error processing file {filename}: {e}")
+        jobs[job_id] = {
+            "status": "failed", 
+            "result": str(e)
+        }
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
 @app.get("/")
 def home():
@@ -79,26 +134,25 @@ async def chat(
 async def get_result(
     job_id: str = Query(..., description="Job ID")
 ):
-    try:
-        job = queue.fetch_job(job_id=job_id)
-    except Exception:
+    if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.is_finished:
-        return {"status": "finished", "result": job.result}
-    elif job.is_failed:
-        return {"status": "failed", "result": str(job.exc_info)}
-    else:
-        return {"status": "in_progress"}
+        
+    return jobs[job_id]
     
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     # Read file content
     file_content = await file.read()
     filename = file.filename
     
-    # Enqueue job with file content and filename
-    job = queue.enqueue(file_embedding_and_loading, file_content, filename)
+    # Create simple UUID for tracking
+    job_id = str(uuid.uuid4())
+    
+    # Store initial status
+    jobs[job_id] = {"status": "in_progress"}
+    
+    # Process the document as a FastAPI Background Task
+    background_tasks.add_task(process_file_background, job_id, file_content, filename)
 
-    return {"status": "queued", "job_id": job.id}
+    return {"status": "queued", "job_id": job_id}
